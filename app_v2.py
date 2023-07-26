@@ -1,9 +1,11 @@
 from typing import Optional
 
 from books import BOOKS
-from fastapi import FastAPI
+from fastapi import FastAPI, Path, Query, HTTPException
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
+from starlette import status
+
 
 app = FastAPI()
 
@@ -23,8 +25,8 @@ class BookRequest(BaseModel):
     title: str = Field(min_length=3)
     author: str = Field(min_length=3)
     descript: str = Field(min_length=3, max_length=300)
-    rating: float = Field(gt=-1, lt=10.0)
-    year: int = Field(gt=1900, lt=2050)
+    rating: float = Field(gt=1, lt=10)
+    year: int = Field(gt=1800, lt=2050)
 
     class Config:
         json_schema_extra = {
@@ -51,13 +53,21 @@ async def first_api():
     return {'message': 'Hello, reader'}
 
 
-@app.get('/books')
+@app.get('/books', status_code=status.HTTP_200_OK)
 async def books():
     return BOOKS
 
 
-@app.get('/books/')
-async def fetch_by_rating(book_rating: float):
+@app.get('/books/{book_id}', status_code=status.HTTP_200_OK)
+async def fetch_by_rating(book_id: int = Path(gt=0)):
+    for book in BOOKS:
+        if book.id == book_id:
+            return book
+    raise HTTPException(status_code=404, detail='Book not found')
+
+
+@app.get('/books/', status_code=status.HTTP_200_OK)
+async def fetch_by_rating(book_rating: float = Query(gt=0, lt=10)):
     books_by_rating = []
     for book in BOOKS:
         if book.rating >= book_rating:
@@ -65,7 +75,7 @@ async def fetch_by_rating(book_rating: float):
     return books_by_rating
 
 
-@app.post('/books/add_new')
+@app.post('/books/add_new', status_code=status.HTTP_201_CREATED)
 async def create_book(book: BookRequest):
     new_book = Book(**book.model_dump())
     BOOKS.append(assigment_book_id(new_book))
@@ -76,15 +86,24 @@ def assigment_book_id(book: Book):
     return book
 
 
-@app.put('/books/update_books')
+@app.put('/books/update_books', status_code=status.HTTP_204_NO_CONTENT)
 async def book_update(book_search: BookRequest):
+    book_changed = False
     for i, book in enumerate(BOOKS):
         if book.id == book_search.id:
             BOOKS[i] = book_search
+            book_changed = True
+    if not book_changed:
+        raise HTTPException(status_code=404, detail='Somthing gonna wrong.')
 
 
-@app.delete('/books/delete_book/{del_book}')
-async def update_book(book_id: int):
+@app.delete('/books/delete_book/{book_id}')
+async def book_delete(book_id: int = Path(gt=0)):
+    book_changed = False
     for i, book in enumerate(BOOKS):
         if BOOKS[i].id == book_id:
             BOOKS.pop(i)
+            book_changed = True
+    if not book_changed:
+        raise HTTPException(status_code=404, detail='Somthing gonna wrong.')
+
